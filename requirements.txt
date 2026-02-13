@@ -1,0 +1,6 @@
+google-cloud-bigquery>=3.25
+streamlit>=1.38
+plotly>=5.24
+pydantic>=2.9
+pydantic-settings>=2.5
+streamlit-autorefresh>=1.0
