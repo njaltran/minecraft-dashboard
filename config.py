@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     usercache_file: Path | None = None  # defaults to server_dir/usercache.json
 
     # BigQuery
-    gcp_project_id: str = "my-minecraft-project"
+    gcp_project_id: str = "minecraft-free-487319"
     bq_dataset: str = "minecraft"
     bq_events_table: str = "events"
     bq_player_stats_table: str = "player_stats"

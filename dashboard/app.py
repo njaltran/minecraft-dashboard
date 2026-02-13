@@ -29,7 +29,8 @@ def get_client() -> bigquery.Client:
         credentials = service_account.Credentials.from_service_account_info(
             st.secrets["gcp_service_account"]
         )
-        return bigquery.Client(project=settings.gcp_project_id, credentials=credentials)
+        project = st.secrets["gcp_service_account"]["project_id"]
+        return bigquery.Client(project=project, credentials=credentials)
     return bigquery.Client(project=settings.gcp_project_id)
 
 
