@@ -1,7 +1,6 @@
 """Tests for Minecraft stats reader."""
 
 import json
-import tempfile
 from pathlib import Path
 
 from collector.stats_reader import load_usercache, read_player_stats
@@ -20,9 +19,21 @@ SAMPLE_STATS = {
             "minecraft:play_time": 50000,
             "minecraft:walk_one_cm": 100000,
             "minecraft:sprint_one_cm": 200000,
+            "minecraft:crouch_one_cm": 5000,
+            "minecraft:swim_one_cm": 3000,
+            "minecraft:fly_one_cm": 8000,
+            "minecraft:fall_one_cm": 2000,
             "minecraft:jump": 500,
+            "minecraft:sneak_time": 300,
             "minecraft:damage_dealt": 250,
             "minecraft:damage_taken": 180,
+            "minecraft:animals_bred": 5,
+            "minecraft:fish_caught": 12,
+            "minecraft:enchant_item": 3,
+            "minecraft:open_chest": 20,
+            "minecraft:sleep_in_bed": 7,
+            "minecraft:time_since_death": 1000,
+            "minecraft:time_since_rest": 500,
         },
         "minecraft:mined": {
             "minecraft:stone": 50,
@@ -41,6 +52,19 @@ SAMPLE_STATS = {
             "minecraft:dirt": 30,
             "minecraft:stick": 10,
         },
+        "minecraft:dropped": {
+            "minecraft:dirt": 5,
+        },
+        "minecraft:broken": {
+            "minecraft:wooden_pickaxe": 1,
+        },
+        "minecraft:killed": {
+            "minecraft:zombie": 4,
+            "minecraft:skeleton": 3,
+        },
+        "minecraft:killed_by": {
+            "minecraft:creeper": 2,
+        },
     }
 }
 
@@ -58,33 +82,87 @@ class TestLoadUsercache:
 
 
 class TestReadPlayerStats:
-    def test_reads_stats(self, tmp_path):
-        # Set up usercache
+    def _setup_files(self, tmp_path):
         cache_file = tmp_path / "usercache.json"
         cache_file.write_text(json.dumps(SAMPLE_USERCACHE))
-
-        # Set up stats dir
         stats_dir = tmp_path / "stats"
         stats_dir.mkdir()
         stat_file = stats_dir / "63f167bb-ff0d-4bcb-a09b-ca34f443510b.json"
         stat_file.write_text(json.dumps(SAMPLE_STATS))
+        return stats_dir, cache_file
 
-        results = read_player_stats(stats_dir, cache_file)
-        assert len(results) == 1
+    def test_reads_aggregate_stats(self, tmp_path):
+        stats_dir, cache_file = self._setup_files(tmp_path)
+        player_stats, mob_details, item_details = read_player_stats(stats_dir, cache_file)
+        assert len(player_stats) == 1
 
-        s = results[0]
+        s = player_stats[0]
         assert s.player == "Njackisyourdad"
         assert s.uuid == "63f167bb-ff0d-4bcb-a09b-ca34f443510b"
+        # Combat
         assert s.deaths == 3
         assert s.mob_kills == 10
         assert s.player_kills == 1
-        assert s.play_time_ticks == 50000
+        assert s.damage_dealt == 250
+        assert s.damage_taken == 180
+        # Movement
         assert s.walk_cm == 100000
         assert s.sprint_cm == 200000
+        assert s.crouch_cm == 5000
+        assert s.swim_cm == 3000
+        assert s.fly_cm == 8000
+        assert s.fall_cm == 2000
         assert s.jump == 500
+        assert s.sneak_time_ticks == 300
+        # Blocks & items
         assert s.blocks_mined == 80  # 50 + 30
         assert s.items_crafted == 3  # 2 + 1
         assert s.items_picked_up == 90  # 50 + 30 + 10
+        assert s.items_dropped == 5
+        assert s.items_broken == 1
+        assert s.items_enchanted == 3
+        # Interactions
+        assert s.animals_bred == 5
+        assert s.fish_caught == 12
+        assert s.opened_chest == 20
+        assert s.sleep_in_bed == 7
+        # Time
+        assert s.play_time_ticks == 50000
+        assert s.time_since_death_ticks == 1000
+        assert s.time_since_rest_ticks == 500
+
+    def test_mob_kill_details(self, tmp_path):
+        stats_dir, cache_file = self._setup_files(tmp_path)
+        _, mob_details, _ = read_player_stats(stats_dir, cache_file)
+
+        killed = [d for d in mob_details if d.direction == "killed"]
+        killed_by = [d for d in mob_details if d.direction == "killed_by"]
+
+        assert len(killed) == 2  # zombie, skeleton
+        assert len(killed_by) == 1  # creeper
+
+        zombie = next(d for d in killed if d.entity == "zombie")
+        assert zombie.count == 4
+        assert zombie.player == "Njackisyourdad"
+
+        creeper = killed_by[0]
+        assert creeper.entity == "creeper"
+        assert creeper.count == 2
+
+    def test_item_stat_details(self, tmp_path):
+        stats_dir, cache_file = self._setup_files(tmp_path)
+        _, _, item_details = read_player_stats(stats_dir, cache_file)
+
+        mined = [d for d in item_details if d.category == "mined"]
+        crafted = [d for d in item_details if d.category == "crafted"]
+        dropped = [d for d in item_details if d.category == "dropped"]
+
+        assert len(mined) == 2  # stone, dirt
+        assert len(crafted) == 2  # crafting_table, wooden_pickaxe
+        assert len(dropped) == 1  # dirt
+
+        stone = next(d for d in mined if d.item == "stone")
+        assert stone.count == 50
 
     def test_empty_stats_dir(self, tmp_path):
         cache_file = tmp_path / "usercache.json"
@@ -92,5 +170,7 @@ class TestReadPlayerStats:
         stats_dir = tmp_path / "stats"
         stats_dir.mkdir()
 
-        results = read_player_stats(stats_dir, cache_file)
-        assert results == []
+        player_stats, mob_details, item_details = read_player_stats(stats_dir, cache_file)
+        assert player_stats == []
+        assert mob_details == []
+        assert item_details == []

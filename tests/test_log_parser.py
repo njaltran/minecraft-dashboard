@@ -88,6 +88,63 @@ class TestParseLogLine:
         event = parse_log_line(line, LOG_DATE)
         assert event is None  # Not Server thread, so ignored
 
+    def test_login_with_coordinates(self):
+        line = "[20:31:33] [Server thread/INFO]: Njackisyourdad[/95.91.208.113:41013] logged in with entity id 117 at (9.5, 120.0, 3.5)"
+        event = parse_log_line(line, LOG_DATE)
+        assert event is not None
+        assert event.player == "Njackisyourdad"
+        assert event.event_type == "login"
+        assert "x=9.5" in event.details
+        assert "y=120.0" in event.details
+        assert "z=3.5" in event.details
+
+    def test_server_done(self):
+        line = '[20:16:54] [Server thread/INFO]: Done (18.244s)! For help, type "help"'
+        event = parse_log_line(line, LOG_DATE)
+        assert event is not None
+        assert event.player == "SERVER"
+        assert event.event_type == "server_start"
+
+    def test_death_drowned(self):
+        line = "[12:00:00] [Server thread/INFO]: Steve drowned"
+        event = parse_log_line(line, LOG_DATE)
+        assert event is not None
+        assert event.player == "Steve"
+        assert event.event_type == "death"
+
+    def test_death_lava(self):
+        line = "[12:00:00] [Server thread/INFO]: Alex tried to swim in lava"
+        event = parse_log_line(line, LOG_DATE)
+        assert event is not None
+        assert event.player == "Alex"
+        assert event.event_type == "death"
+
+    def test_death_void(self):
+        line = "[12:00:00] [Server thread/INFO]: Steve fell out of the world"
+        event = parse_log_line(line, LOG_DATE)
+        assert event is not None
+        assert event.player == "Steve"
+        assert event.event_type == "death"
+
+    def test_death_frozen(self):
+        line = "[12:00:00] [Server thread/INFO]: Alex froze to death"
+        event = parse_log_line(line, LOG_DATE)
+        assert event is not None
+        assert event.event_type == "death"
+
+    def test_death_lightning(self):
+        line = "[12:00:00] [Server thread/INFO]: Steve was struck by lightning"
+        event = parse_log_line(line, LOG_DATE)
+        assert event is not None
+        assert event.event_type == "death"
+
+    def test_goal(self):
+        line = "[15:00:00] [Server thread/INFO]: Steve has reached the goal [Free the End]"
+        event = parse_log_line(line, LOG_DATE)
+        assert event is not None
+        assert event.event_type == "goal"
+        assert event.details == "Free the End"
+
 
 class TestParseLogLines:
     def test_filters_relevant_events(self):

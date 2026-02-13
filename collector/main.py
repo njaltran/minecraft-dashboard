@@ -5,7 +5,14 @@ import time
 
 from config import settings
 
-from .bigquery_writer import ensure_dataset_and_tables, get_client, write_events, write_player_stats
+from .bigquery_writer import (
+    ensure_dataset_and_tables,
+    get_client,
+    write_events,
+    write_item_stat_details,
+    write_mob_kill_details,
+    write_player_stats,
+)
 from .log_parser import parse_log_lines, read_log_from_offset
 from .stats_reader import read_player_stats
 
@@ -36,13 +43,16 @@ def collect_once() -> None:
     save_offset(new_offset)
 
     # Read player stats snapshot
-    stats = read_player_stats(
+    stats, mob_details, item_details = read_player_stats(
         settings.resolved_stats_dir, settings.resolved_usercache_file
     )
     n_stats = write_player_stats(client, stats)
+    n_mob = write_mob_kill_details(client, mob_details)
+    n_items = write_item_stat_details(client, item_details)
 
     print(
-        f"Collected {n_events} events, {n_stats} stat snapshots",
+        f"Collected {n_events} events, {n_stats} stat snapshots, "
+        f"{n_mob} mob details, {n_items} item details",
         flush=True,
     )
 

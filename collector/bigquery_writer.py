@@ -5,10 +5,18 @@ from dataclasses import asdict
 from google.cloud import bigquery
 
 from config import settings
-from schemas.bigquery_schemas import EVENTS_SCHEMA, PLAYER_STATS_SCHEMA
+from schemas.bigquery_schemas import (
+    EVENTS_SCHEMA,
+    ITEM_STATS_DETAIL_SCHEMA,
+    MOB_KILLS_DETAIL_SCHEMA,
+    PLAYER_STATS_SCHEMA,
+)
 
 from .log_parser import GameEvent
-from .stats_reader import PlayerStats
+from .stats_reader import ItemStatDetail, MobKillDetail, PlayerStats
+
+BQ_MOB_KILLS_DETAIL_TABLE = "mob_kills_detail"
+BQ_ITEM_STATS_DETAIL_TABLE = "item_stats_detail"
 
 
 def get_client() -> bigquery.Client:
@@ -21,13 +29,16 @@ def ensure_dataset_and_tables(client: bigquery.Client) -> None:
     dataset = bigquery.Dataset(dataset_ref)
     client.create_dataset(dataset, exists_ok=True)
 
-    events_ref = f"{dataset_ref}.{settings.bq_events_table}"
-    events_table = bigquery.Table(events_ref, schema=EVENTS_SCHEMA)
-    client.create_table(events_table, exists_ok=True)
-
-    stats_ref = f"{dataset_ref}.{settings.bq_player_stats_table}"
-    stats_table = bigquery.Table(stats_ref, schema=PLAYER_STATS_SCHEMA)
-    client.create_table(stats_table, exists_ok=True)
+    tables = {
+        settings.bq_events_table: EVENTS_SCHEMA,
+        settings.bq_player_stats_table: PLAYER_STATS_SCHEMA,
+        BQ_MOB_KILLS_DETAIL_TABLE: MOB_KILLS_DETAIL_SCHEMA,
+        BQ_ITEM_STATS_DETAIL_TABLE: ITEM_STATS_DETAIL_SCHEMA,
+    }
+    for table_name, schema in tables.items():
+        table_id = f"{dataset_ref}.{table_name}"
+        table = bigquery.Table(table_id, schema=schema)
+        client.create_table(table, exists_ok=True)
 
 
 def _batch_load(client: bigquery.Client, table_id: str, rows: list[dict], schema: list) -> int:
@@ -42,33 +53,49 @@ def _batch_load(client: bigquery.Client, table_id: str, rows: list[dict], schema
     return len(rows)
 
 
+def _serialize_datetime_rows(rows: list[dict], time_field: str) -> list[dict]:
+    """Convert datetime fields to ISO format strings for JSON serialization."""
+    for row in rows:
+        if time_field in row:
+            row[time_field] = row[time_field].isoformat()
+    return rows
+
+
 def write_events(client: bigquery.Client, events: list[GameEvent]) -> int:
     """Insert game events into BigQuery. Returns number of rows inserted."""
     if not events:
         return 0
 
     table_id = f"{settings.gcp_project_id}.{settings.bq_dataset}.{settings.bq_events_table}"
-    rows = []
-    for e in events:
-        row = asdict(e)
-        row["timestamp"] = e.timestamp.isoformat()
-        rows.append(row)
-
+    rows = _serialize_datetime_rows([asdict(e) for e in events], "timestamp")
     return _batch_load(client, table_id, rows, EVENTS_SCHEMA)
 
 
-def write_player_stats(
-    client: bigquery.Client, stats: list[PlayerStats]
-) -> int:
+def write_player_stats(client: bigquery.Client, stats: list[PlayerStats]) -> int:
     """Insert player stat snapshots into BigQuery. Returns number of rows inserted."""
     if not stats:
         return 0
 
     table_id = f"{settings.gcp_project_id}.{settings.bq_dataset}.{settings.bq_player_stats_table}"
-    rows = []
-    for s in stats:
-        row = asdict(s)
-        row["snapshot_time"] = s.snapshot_time.isoformat()
-        rows.append(row)
-
+    rows = _serialize_datetime_rows([asdict(s) for s in stats], "snapshot_time")
     return _batch_load(client, table_id, rows, PLAYER_STATS_SCHEMA)
+
+
+def write_mob_kill_details(client: bigquery.Client, details: list[MobKillDetail]) -> int:
+    """Insert per-entity kill/killed_by breakdowns. Returns number of rows inserted."""
+    if not details:
+        return 0
+
+    table_id = f"{settings.gcp_project_id}.{settings.bq_dataset}.{BQ_MOB_KILLS_DETAIL_TABLE}"
+    rows = _serialize_datetime_rows([asdict(d) for d in details], "snapshot_time")
+    return _batch_load(client, table_id, rows, MOB_KILLS_DETAIL_SCHEMA)
+
+
+def write_item_stat_details(client: bigquery.Client, details: list[ItemStatDetail]) -> int:
+    """Insert per-item breakdowns. Returns number of rows inserted."""
+    if not details:
+        return 0
+
+    table_id = f"{settings.gcp_project_id}.{settings.bq_dataset}.{BQ_ITEM_STATS_DETAIL_TABLE}"
+    rows = _serialize_datetime_rows([asdict(d) for d in details], "snapshot_time")
+    return _batch_load(client, table_id, rows, ITEM_STATS_DETAIL_SCHEMA)

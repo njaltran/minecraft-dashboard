@@ -14,19 +14,60 @@ LOG_LINE_RE = re.compile(
 # Vanilla death messages always start with the player name.
 # Full list: https://minecraft.wiki/w/Death_messages
 DEATH_KEYWORDS = [
-    "was shot by", "was pummeled by", "was pricked to death",
-    "walked into a cactus", "drowned", "experienced kinetic energy",
-    "blew up", "was blown up by", "was killed by", "hit the ground too hard",
-    "fell from a high place", "fell off", "fell while", "was squashed by",
-    "was fireballed by", "was killed trying to hurt",
-    "walked into fire", "went up in flames", "burned to death",
+    # Projectile
+    "was shot by", "was pummeled by",
+    # Cactus
+    "was pricked to death", "walked into a cactus whilst trying to escape",
+    # Drowning
+    "drowned", "drowned whilst trying to escape",
+    # Elytra / kinetic
+    "experienced kinetic energy", "experienced kinetic energy whilst trying to escape",
+    # Explosion
+    "blew up", "was blown up by", "was killed by",
+    # Fall
+    "hit the ground too hard", "fell from a high place", "fell off",
+    "fell while", "was doomed to fall", "was doomed to fall by",
+    # Falling block
+    "was squashed by",
+    # Fireball
+    "was fireballed by",
+    # Fire / lava
+    "walked into fire whilst fighting", "walked into fire",
+    "went up in flames", "burned to death", "was burnt to a crisp whilst fighting",
     "was burnt to a crisp", "tried to swim in lava",
-    "suffocated in a wall", "was squished",
-    "starved to death", "was poked to death by",
-    "was impaled on a stalagmite", "was skewered by",
-    "withered away", "was stung to death",
+    "tried to swim in lava to escape",
+    # Thorns
+    "was killed trying to hurt",
+    # Suffocation
+    "suffocated in a wall", "was squished too much",
+    "was squished by",
+    # Starvation
+    "starved to death",
+    # Sweet berry / pointed dripstone
+    "was poked to death by a sweet berry bush",
+    "was impaled on a stalagmite", "was skewered by a falling stalactite",
+    # Wither
+    "withered away", "withered away whilst fighting",
+    # Bee
+    "was stung to death",
+    # Melee
     "was slain by", "was killed by",
-    "died", "was doomed to fall",
+    # Lightning
+    "was struck by lightning", "was struck by lightning whilst fighting",
+    # Magic
+    "was killed by magic", "was killed by magic whilst trying to escape",
+    "was killed by even more magic",
+    # Frozen
+    "froze to death", "was frozen to death by",
+    # Warden
+    "was obliterated by a sonically-charged shriek",
+    # Void
+    "fell out of the world", "didn't want to live in the same world as",
+    # Generic
+    "died", "died because of",
+    "was roasted in dragon's breath",
+    "was squished by",
+    "left the confines of this world",
 ]
 
 ADVANCEMENT_RE = re.compile(r"^(\w+) has made the advancement \[(.+)\]$")
@@ -35,13 +76,19 @@ GOAL_RE = re.compile(r"^(\w+) has reached the goal \[(.+)\]$")
 JOIN_RE = re.compile(r"^(\w+) joined the game$")
 LEAVE_RE = re.compile(r"^(\w+) left the game$")
 CHAT_RE = re.compile(r"^<(\w+)> (.+)$")
+# Player login with coordinates: "Player[/ip:port] logged in with entity id N at (x, y, z)"
+LOGIN_RE = re.compile(
+    r"^(\w+)\[/[\d.:]+\] logged in with entity id \d+ at \((-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\)$"
+)
+# Server done: 'Done (Xs)! For help, type "help"'
+SERVER_DONE_RE = re.compile(r'^Done \([\d.]+s\)! For help, type "help"$')
 
 
 @dataclass
 class GameEvent:
     timestamp: datetime
     player: str
-    event_type: str  # death, advancement, challenge, goal, join, leave, chat
+    event_type: str  # death, advancement, challenge, goal, join, leave, chat, login, server_start
     details: str
     raw_message: str
 
@@ -82,6 +129,10 @@ def parse_log_line(line: str, log_date: date | None = None) -> GameEvent | None:
     if m := GOAL_RE.match(message):
         return GameEvent(dt, m.group(1), "goal", m.group(2), message)
 
+    if m := LOGIN_RE.match(message):
+        x, y, z = m.group(2), m.group(3), m.group(4)
+        return GameEvent(dt, m.group(1), "login", f"x={x} y={y} z={z}", message)
+
     if m := JOIN_RE.match(message):
         return GameEvent(dt, m.group(1), "join", "", message)
 
@@ -90,6 +141,9 @@ def parse_log_line(line: str, log_date: date | None = None) -> GameEvent | None:
 
     if m := CHAT_RE.match(message):
         return GameEvent(dt, m.group(1), "chat", m.group(2), message)
+
+    if SERVER_DONE_RE.match(message):
+        return GameEvent(dt, "SERVER", "server_start", message, message)
 
     if death := parse_death(message):
         player, reason = death
