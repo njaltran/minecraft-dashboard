@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.5",
     "streamlit-autorefresh>=1.0",
+    "mcp[cli]>=1.2.0",
 ]
 
 [project.optional-dependencies]
@@ -21,9 +22,10 @@ dev = [
 [project.scripts]
 mc-collect = "collector.main:main"
 mc-dashboard = "dashboard.app:main"
+minecraft-mcp = "mcp_server.server:main"
 
 [tool.setuptools.packages.find]
-include = ["collector*", "dashboard*", "schemas*", "config*"]
+include = ["collector*", "dashboard*", "schemas*", "config*", "mcp_server*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
